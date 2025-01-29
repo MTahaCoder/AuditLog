@@ -1,0 +1,20 @@
+/*  
+  exec sp_disableAuditTrigger 'Adapter', 0  
+*/  
+  
+CREATE PROC sp_disableAuditTrigger  
+ @tableName varchar(500),   
+ @disable bit = 0  
+as  
+BEGIN  
+ SET NOCOUNT ON;  
+ DECLARE @sql nvarchar(500);  
+ SET @sql = CONCAT(IIF(@disable <> 0,'DISABLE', 'ENABLE'),' TRIGGER trg_audit_', @tableName, ' ON ', @tableName) ;  
+ --PRINT @sql  
+ EXEC SP_EXECUTESQL @sql  
+END  
+  
+  
+  
+  
+  

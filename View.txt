@@ -1,0 +1,3 @@
+CREATE VIEW vw_AuditTables    
+AS    
+SELECT OBJECT_NAME(parent_id)EntityName, ~is_disabled AuditEnabled FROM sys.triggers where name like 'trg_audit_%'; 

@@ -1,0 +1,116 @@
+  
+CREATE TRIGGER trg_audit_customer  
+ON Customer  
+AFTER INSERT, UPDATE, DELETE  
+AS  
+BEGIN  
+    SET NOCOUNT ON;  
+  
+ -- Log each row for UPDATE with old and new data  
+    DECLARE @old_data NVARCHAR(MAX), @new_data NVARCHAR(MAX);  
+  
+  DECLARE @entity varchar(50);--,  @pk_column VARCHAR(50);   
+   
+ SELECT @entity = OBJECT_NAME(parent_object_id)  
+             FROM sys.objects   
+             WHERE sys.objects.object_id = @@PROCID;   
+  
+  
+    -- For UPDATE operations (log old and new data together)  
+    IF EXISTS (SELECT * FROM inserted) AND EXISTS (SELECT * FROM deleted)  
+    BEGIN  
+       SET @old_data = '';  
+       SET @NEW_data = '';  
+  
+          
+        -- Loop through each row in inserted and deleted  
+        DECLARE cur CURSOR FOR  
+        SELECT i.CustomerId, d.CustomerId  
+        FROM inserted i  
+        JOIN deleted d ON i.CustomerId = d.CustomerId;  
+          
+        OPEN cur;  
+        FETCH NEXT FROM cur INTO @new_data, @old_data;  
+  
+        WHILE @@FETCH_STATUS = 0  
+        BEGIN  
+            -- Insert each row update into audit logs  
+            INSERT INTO AuditLog(table_name, operation_type, record_id, old_data, new_data, changed_by)  
+            VALUES (  
+                @entity,   
+                'UPDATE',  
+                CAST(@new_data AS NVARCHAR(255)),  
+                (SELECT * FROM deleted WHERE CustomerId = @old_data FOR JSON PATH, ROOT('old_data')),  
+                (SELECT * FROM inserted WHERE CustomerId = @new_data FOR JSON PATH, ROOT('new_data')),  
+    (SELECT ModifiedBy FROM inserted where CustomerId = @new_data)  
+            );  
+            FETCH NEXT FROM cur INTO @new_data, @old_data;  
+        END  
+  
+        CLOSE cur;  
+        DEALLOCATE cur;  
+    END  
+      
+    -- For INSERT operations  
+    ELSE IF EXISTS (SELECT * FROM inserted)  
+    BEGIN  
+        -- Insert each row as a new record  
+       SET @new_data = '';  
+          
+        -- Loop through each row in inserted  
+        DECLARE cur CURSOR FOR  
+        SELECT CustomerId FROM inserted;  
+          
+        OPEN cur;  
+        FETCH NEXT FROM cur INTO @new_data;  
+  
+        WHILE @@FETCH_STATUS = 0  
+        BEGIN  
+            -- Insert each new row into audit logs  
+            INSERT INTO AuditLog(table_name, operation_type, record_id, new_data,changed_by)  
+            VALUES (  
+                @entity,  
+                'INSERT',  
+                CAST(@new_data AS NVARCHAR(255)),  
+                (SELECT * FROM inserted WHERE CustomerId = @new_data FOR JSON PATH, ROOT('new_data')),  
+    (SELECT CreatedBy FROM inserted where CustomerId = @new_data)  
+            );  
+            FETCH NEXT FROM cur INTO @new_data;  
+        END  
+  
+        CLOSE cur;  
+        DEALLOCATE cur;  
+    END  
+  
+    -- For DELETE operations  
+    ELSE IF EXISTS (SELECT * FROM deleted)  
+    BEGIN  
+        -- Insert each deleted row as an old record  
+  SET @old_data = '';  
+          
+        -- Loop through each row in deleted  
+        DECLARE cur CURSOR FOR  
+        SELECT CustomerId FROM deleted;  
+          
+        OPEN cur;  
+        FETCH NEXT FROM cur INTO @old_data;  
+  
+        WHILE @@FETCH_STATUS = 0  
+        BEGIN  
+            -- Insert each deleted row into audit logs  
+            INSERT INTO AuditLog(table_name, operation_type, record_id, old_data,changed_by)  
+            VALUES (  
+                @entity,  
+                'DELETE',  
+                CAST(@old_data AS NVARCHAR(255)),  
+                (SELECT * FROM deleted WHERE CustomerId = @old_data FOR JSON PATH, ROOT('old_data')),  
+    (SELECT CreatedBy FROM deleted WHERE CustomerId = @old_data)  
+            );  
+            FETCH NEXT FROM cur INTO @old_data;  
+        END  
+  
+        CLOSE cur;  
+        DEALLOCATE cur;  
+    END  
+END  
+go
